@@ -1,5 +1,9 @@
 # mini-DBMS
 
+## 설계
+
+- [Phase 1 설계](docs/design/phase1/README.md)
+
 ## 설계 결정 (ADR)
 
 - [0001. 테이블 저장 형식: CSV](docs/adr/0001-storage-format.md)
