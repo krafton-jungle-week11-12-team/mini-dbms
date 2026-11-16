@@ -2,7 +2,7 @@
 
 ## 요구사항
 
-- [Phase 1 요구사항](docs/requirements/phase1.md)
+- [Phase 1 요구사항](docs/requirements/phase1/README.md)
 
 ## 설계 결정 (ADR)
 
