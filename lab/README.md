@@ -57,7 +57,11 @@ mysql -ujungle -pjungle1234 -t minidb < compare.sql  # id 조회 vs email 조회
 mysql -ujungle -pjungle1234 -t minidb < index.sql    # email에 인덱스를 추가한 뒤 다시 조회
 ```
 
-`SHOW PROFILES`의 실행 시간과 `EXPLAIN`의 `type`(`const`, `ALL`, `ref`)을 비교해 보세요.
+`SHOW PROFILES`의 실행 시간과 `EXPLAIN`의 `type` 값을 비교해 보세요.
+- `const`: 기본 키(B+ 트리)로 행 하나를 바로 찾았다는 뜻이에요. `id` 조회에서 나와요.
+- `ALL`: 테이블 전체를 처음부터 훑었다는 뜻이에요. 인덱스 없는 `email` 조회에서 나와요.
+- `ref`: 보조 인덱스로 일치하는 행을 찾았다는 뜻이에요. `index.sql` 실행 후 `email` 조회에서 나와요.
+
 테스트 환경에서는 `id` 조회가 0.24 ms, 인덱스 없는 `email` 조회가 165 ms였어요.
 
 ### Phase 3 (터미널 A)
