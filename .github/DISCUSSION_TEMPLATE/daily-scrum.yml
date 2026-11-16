@@ -1,0 +1,22 @@
+title: "[Daily] YYYY-MM-DD"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        오늘의 스크럼 글이에요. 각자 아래 형식으로 **댓글**에 작성해 주세요.
+
+        ```
+        ## 어제 한 일
+        - 페이지 단위 파일 저장 구현
+
+        ## 오늘 할 일
+        - B+ 트리 인덱스 삽입 시작
+
+        ## 막힌 점
+        - 노드 분할할 때 부모 키 갱신 방식 고민 중
+        ```
+  - type: textarea
+    id: notice
+    attributes:
+      label: 오늘 공지
+      description: 오늘 함께 알아야 할 일정이나 공지가 있으면 적어요. 없으면 비워 둬요.
