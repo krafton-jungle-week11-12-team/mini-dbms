@@ -270,7 +270,7 @@ class Executor:
         4. Result를 반환한다
 
     run_select(ast):          # SELECT의 실행 순서
-        1. 행 읽기: where가 id 조건이면 인덱스, 아니면 storage.scan(ast.table)  -- 인덱스는 Phase 2
+        1. 행 읽기: where가 id 조건이면 인덱스로 오프셋을 찾아 storage.read_at(), 아니면 storage.scan(ast.table)  -- 인덱스는 Phase 2
         2. 거르기: _match()로 조건에 맞는 행만 남긴다
         3. 컬럼 고르기: _project()로 필요한 컬럼만 남긴다
         4. Result를 반환한다
@@ -364,6 +364,9 @@ class Storage:
 
     def read_at(self, table, offset):
         """오프셋 위치의 행 하나만 읽기. Phase 2 인덱스 조회에 사용"""
+        with open(self._path(table), "rb") as f:
+            f.seek(offset)
+            return self._decode(f.readline())
 
     def _encode(self, record) -> bytes: ...   # 레코드 → CSV 한 줄
     def _decode(self, line) -> list: ...      # CSV 한 줄 → 레코드
@@ -373,14 +376,14 @@ class Storage:
 | --- | --- | --- |
 | `append(table, record)` | INSERT | 새 행의 시작 바이트 오프셋. 쓰기 직전의 `tell()` 값이에요 (예: `18`) |
 | `scan(table)` | WHERE가 id 조건이 아닌 SELECT, 인덱스 재구축 | `(오프셋, 레코드)`를 한 행씩 넘기는 제너레이터 |
-| `read_at(table, offset)` | Phase 2의 `WHERE id = ?` | 그 위치의 레코드 하나 |
+| `read_at(table, offset)` | Phase 2의 `WHERE id = ?` | 그 위치의 레코드 하나. `seek(offset)`로 이동해 한 줄만 읽어요 |
 
 - 파일은 바이너리 모드(`"ab"`, `"rb"`)로 열어요. 텍스트 모드에서는 `tell()` 값이 실제 바이트 위치와 다를 수 있어요.
 - `scan()`은 배열 대신 한 행씩 넘겨요. 100만 행을 한 번에 메모리에 올리지 않으려는 거예요.
 
 ### CSV 변환
 
-`_encode`는 파일에 쓰기 직전에, `_decode`는 파일에서 한 줄을 읽은 직후에 쓰여요.
+`_encode`는 파일에 쓰기 직전에, `_decode`는 파일에서 한 줄을 읽은 직후에 쓰여요. `scan()`과 `read_at()` 모두 `_decode`를 거쳐요.
 
 ```
 INSERT INTO users VALUES (3, 'park', 28)
@@ -391,6 +394,13 @@ INSERT INTO users VALUES (3, 'park', 28)
 SELECT * FROM users
 → 실행기: storage.scan("users")
    → scan 안에서: 한 줄 읽기 b"3,park,28\n"
+   → _decode(b"3,park,28\n") → [3, "park", 28]
+   → 실행기에게 넘겨줌
+
+SELECT * FROM users WHERE id = 3          -- Phase 2
+→ 실행기: 인덱스에서 id 3의 오프셋 18을 찾음
+   → storage.read_at("users", 18)
+   → read_at 안에서: seek(18) 후 한 줄 읽기 b"3,park,28\n"
    → _decode(b"3,park,28\n") → [3, "park", 28]
    → 실행기에게 넘겨줌
 ```
