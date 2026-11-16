@@ -12,3 +12,7 @@
 
 과제 기간 안에 Phase 1~3을 모두 끝내는 게 우선이라, 구현과 디버깅이 가장 쉬운 CSV를 골랐어요.
 Phase 2의 B+ 트리에는 `id → 행 시작 바이트 오프셋`을 저장해요. 그래서 CSV여도 `WHERE id = ?` 조회는 해당 위치로 바로 이동(seek)해 한 행만 읽어요.
+
+## DBMS 체험 실습
+
+과제를 구현하기 전에 SQLite와 MySQL로 Phase 1~3을 미리 체험하려면 [lab/README.md](lab/README.md)를 따라 해요.
