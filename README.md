@@ -1,5 +1,9 @@
 # mini-DBMS
 
+## 요구사항
+
+- [Phase 1 요구사항](docs/requirements/phase1.md)
+
 ## 설계 결정 (ADR)
 
 - [0001. 테이블 저장 형식: CSV](docs/adr/0001-storage-format.md)
