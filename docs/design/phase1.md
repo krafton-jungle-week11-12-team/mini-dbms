@@ -341,7 +341,7 @@ SELECT * FROM users WHERE age > 100      -- 결과 0행
 ## 저장 계층
 
 이 항목을 읽으면 저장 계층이 CSV 파일에 행을 쓰고 읽는 방법과, 각 함수가 언제 쓰이는지 알 수 있어요.
-CSV를 고른 이유는 [ADR 0001](../../adr/0001-storage-format.md)에서 다뤄요.
+CSV를 고른 이유는 [ADR 0001](../adr/0001-storage-format.md)에서 다뤄요.
 
 ### `Storage` 클래스
 
