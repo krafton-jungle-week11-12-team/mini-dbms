@@ -4,7 +4,7 @@ SQL 파일이나 HTTP 요청으로 `INSERT`와 `SELECT`를 실행하고, 데이�
 
 ## 사용법
 
-Python 3.9 이상이 필요하고, 표준 라이브러리만 써요.
+Python 3.10 이상이 필요하고, 표준 라이브러리만 써요.
 실행 방법은 두 가지예요. 엔진을 직접 켜서 SQL 파일을 실행하거나, API 서버를 띄워 HTTP로 SQL을 보내요.
 두 방법 모두 프로젝트 루트에서 실행하고, 데이터는 같은 폴더(`MINI_DBMS_DATA`, 기본 `data`)의 `users.csv`에 저장돼요.
 
@@ -99,10 +99,14 @@ python3 -m mini_dbms.server
 | 포트 바꾸기 | `python3 -m mini_dbms.server --port 9000` |
 | 데이터 폴더 바꾸기 | `MINI_DBMS_DATA=/tmp/db python3 -m mini_dbms.server` |
 | 다른 컴퓨터에서 접속 허용 | `python3 -m mini_dbms.server --host 0.0.0.0` |
+| 워커 수 바꾸기 (기본 4) | `python3 -m mini_dbms.server --workers 8` |
+| 작업 큐 크기 바꾸기 (기본 16) | `python3 -m mini_dbms.server --queue-size 32` |
 
 - 데이터는 서버를 실행한 컴퓨터에 저장돼요. 요청을 보낸 쪽에는 응답만 와요.
 - 서버는 시작할 때 `users.csv`를 한 번 읽어 인덱스를 만들어요. 서버가 켜져 있는 동안 CLI로 넣은 데이터는 서버를 다시 켜야 보여요.
-- 요청은 한 번에 하나씩 처리해요. 워커 풀은 아직 없어요.
+- 요청은 워커 스레드 4개가 동시에 처리하고, 워커가 모두 바쁘면 최대 16개까지 작업 큐에서 기다려요. 큐가 가득 차면 503으로 거절해요.
+- 같은 테이블의 INSERT와 SELECT는 테이블 락으로 하나씩 실행돼서, id가 겹치거나 쓰는 도중의 행을 읽지 않아요.
+- 요청 바디를 5초 동안 보내지 않으면 응답 없이 연결을 닫아요.
 - `Address already in use`가 나오면 `--port`로 다른 포트를 써요.
 
 ### 요청 보내기
@@ -139,8 +143,9 @@ SELECT는 200, INSERT는 201로 응답해요. 실패하면 `ok`가 `false`이고
 | 404 | `TABLE_NOT_FOUND` / `NOT_FOUND` | 없는 테이블 / `/query`가 아닌 경로 |
 | 405, 411, 413, 415 | `METHOD_NOT_ALLOWED` 등 | POST가 아님, `Content-Length` 없음, 바디 1MB 초과, JSON이 아닌 `Content-Type` |
 | 500 | `INTERNAL_ERROR` | 서버 내부 오류. 상세는 서버 로그에만 남아요 |
+| 503 | `SERVICE_UNAVAILABLE` | 작업 큐가 가득 참. `Retry-After: 1` 헤더가 붙으니 1초 뒤 다시 보내요 |
 
-전체 규칙은 [Phase 3 설계](docs/design/phase3.md)를 봐요.
+전체 규칙은 [Phase 3 설계](docs/design/phase3.md)를, 스레드 풀과 테이블 락은 [Phase 4 설계](docs/design/phase4.md)를 봐요.
 
 ## 테스트
 
