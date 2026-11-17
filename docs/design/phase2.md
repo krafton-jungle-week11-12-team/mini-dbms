@@ -1,18 +1,82 @@
 # Phase 2 설계
 
-이 문서를 읽으면 B+ 트리 인덱스가 어떤 규칙으로 만들어지고, id로 offset을 어떻게 찾는지 알 수 있어요.
-무엇을 해야 하는지는 [Phase 2 요구사항](../requirements/phase2.md)에 있어요.
+이 문서를 읽으면 실행기가 B+ 트리 인덱스를 어떻게 들고 있다가 INSERT와 SELECT에 쓰는지, B+ 트리가 어떤 규칙으로 동작하는지 알 수 있어요.
+Phase 1의 처리 흐름과 저장 계층은 [Phase 1 설계](phase1.md)를 따라요.
 
 ## 목차
 
-1. [B+ 트리 규칙](#b-트리-규칙)
-2. [검색](#검색)
-3. [삽입과 분할](#삽입과-분할)
-4. [다루지 않는 것](#다루지-않는-것)
+1. [실행기](#실행기)
+2. [B+ 트리](#b-트리)
 
-## B+ 트리 규칙
+## 실행기
 
-이 항목을 읽으면 B+ 트리가 항상 지켜야 하는 규칙을 알 수 있어요. 검색과 삽입은 이 규칙을 지키도록 설계해요.
+이 항목을 읽으면 실행기가 테이블마다 인덱스를 어떻게 관리하고, INSERT와 SELECT에서 인덱스를 언제 쓰는지 알 수 있어요.
+
+### 필드
+
+```python
+class Executor:
+    def __init__(self, storage, schema):
+        self.storage = storage
+        self.schema = schema
+        self.indexes = {}   # 테이블 → BPlusTree
+        self.next_id = {}   # 테이블 → 다음에 줄 id
+        for table in schema:
+            self._load(table)
+```
+
+| 필드 | 의미 | 예시 |
+| --- | --- | --- |
+| `storage` | 파일을 읽고 쓰는 [저장 계층](phase1.md#저장-계층) | `Storage("data")` |
+| `schema` | 테이블별 컬럼 이름과 타입 | `{"users": [("id", int), ("name", str), ("age", int)]}` |
+| `indexes` | 테이블 이름 → 그 테이블의 `BPlusTree` | `{"users": BPlusTree(...)}` |
+| `next_id` | 테이블 이름 → 다음 INSERT에 부여할 id | `{"users": 6}` |
+
+생성할 때 스키마의 테이블마다 `_load(table)`을 호출해서 `indexes`와 `next_id`를 채워요.
+
+### INSERT
+
+`run_insert(ast)`는 아래 순서로 동작해요.
+
+```
+run_insert(ast):
+    1. id 자동 부여
+    2. id를 포함한 레코드 구성
+    3. 파일에 쓰고 offset 받기
+    4. B+ 트리에 (id, offset) 삽입
+    5. 다음 id 준비
+```
+
+### SELECT
+
+`run_select(ast)`는 WHERE가 `id = ?`이면 인덱스로, 그 외에는 선형 탐색으로 행을 읽어요.
+
+```python
+def run_select(self, ast):
+    names = [name for name, _ in self.schema[ast.table]]
+    column_index = {name: i for i, name in enumerate(names)}
+
+    if self._is_id_lookup(ast.where):                       # WHERE id = ?
+        offset = self.indexes[ast.table].search(ast.where.value)
+        records = [] if offset is None else [self.storage.read_at(ast.table, offset)]
+    else:                                                   # 그 외 → 선형 탐색
+        records = (rec for _, rec in self.storage.scan(ast.table))
+
+    rows = [self._project(r, ast.columns, index)
+            for r in records if self._match(r, ast.where, column_index)]
+    ...
+```
+
+| 경우 | 행을 읽는 방법 |
+| --- | --- |
+| `WHERE id = ?` | 인덱스에서 offset을 찾고 `storage.read_at()`으로 한 행만 읽어요. offset이 없으면 결과는 0행이에요 |
+| 그 외 | `storage.scan()`으로 모든 행을 읽어요 |
+
+어느 경우든 읽은 행은 [`_match()`](phase1.md#_matchrow-condition)로 거르고 [`_project()`](phase1.md#_projectrow-columns)로 컬럼을 골라요.
+
+## B+ 트리
+
+이 항목을 읽으면 B+ 트리가 지켜야 하는 규칙과, 노드 크기를 어떻게 정하는지 알 수 있어요.
 
 ### 구조 규칙
 
@@ -30,111 +94,14 @@
 
 7. 삽입은 항상 리프에서 일어나고, 정렬된 위치에 넣는다.
 8. 넘치지 않으면 끝이다.
-9. 리프가 넘치면 반으로 나누고, 오른쪽 첫 키를 부모로 **복사**한다.
-10. 내부 노드가 넘치면 가운데 키를 부모로 **이동**한다.
+9. 리프가 넘치면 반으로 나누고, 오른쪽 첫 키를 부모로 복사한다.
+10. 내부 노드가 넘치면 가운데 키를 부모로 이동한다.
 11. 루트가 넘치면 새 루트를 만들고, 높이가 1 늘어난다.
 
-### 용어
+### 정한 것
 
-- `MAX_KEYS`: 노드 하나에 들어갈 수 있는 키의 최대 개수. 차수(order)가 m이면 `MAX_KEYS = m - 1`이에요. (예: `MAX_KEYS = 64`)
-- 키: 인덱스로 쓰는 컬럼 값. Phase 2에서는 `id`예요.
-- 값: 리프에만 있고, 그 행이 CSV 파일에서 시작하는 바이트 offset이에요.
-
-## 검색
-
-이 항목을 읽으면 내부 노드에서 어느 자식으로 내려갈지 `bisect_right`로 정하는 이유를 알 수 있어요.
-
-### 자식 고르기
-
-내부 노드의 키 k개는 범위를 k+1개 구간으로 나누고, 자식 i는 "i번째 키 이상, i+1번째 키 미만" 구간을 맡아요.
-
-```
-        keys = [3, 5, 7]
-       /     |      |      \
- children[0] [1]    [2]     [3]
-   x < 3   3≤x<5  5≤x<7   x ≥ 7
-```
-
-`bisect_right(keys, x)`는 x 이하인 키의 개수를 반환하고, 그 개수가 곧 x가 속한 구간의 자식 번호예요.
-
-| 찾는 값 x | x 이하인 키 | `bisect_right` | 가는 자식 |
-| --- | --- | --- | --- |
-| 2 | 없음 | 0 | `children[0]` |
-| 4 | 3 | 1 | `children[1]` |
-| 5 | 3, 5 | 2 | `children[2]` |
-| 9 | 3, 5, 7 | 3 | `children[3]` |
-
-### `bisect_left`가 아닌 이유
-
-찾는 값이 키와 같을 때 결과가 달라요. 5를 찾으면 `bisect_left`는 1을 반환해 `children[1]`(5 미만)로 잘못 가고, `bisect_right`는 2를 반환해 `children[2]`(5 이상)로 가요.
-리프를 분할할 때 오른쪽 첫 키를 부모로 올리기 때문에, 부모의 키와 같은 값은 항상 오른쪽 자식에 있어요.
-
-리프 안에서 키를 찾을 때는 `bisect_left`로 위치를 찾고, 그 위치의 키가 찾는 값과 같은지 확인해요.
-
-### 예시
-
-```python
-from bisect import bisect_left, bisect_right
-
-def search(self, key):
-    node = self.root
-    while not node.is_leaf:
-        node = node.children[bisect_right(node.keys, key)]
-    i = bisect_left(node.keys, key)
-    if i < len(node.keys) and node.keys[i] == key:
-        return node.values[i]   # offset
-    return None                 # 없는 id
-```
-
-## 삽입과 분할
-
-이 항목을 읽으면 노드가 넘쳤을 때 어떻게 나누고, 어떤 키를 부모로 올리는지 알 수 있어요.
-
-### 리프 분할: 오른쪽 첫 키를 복사
-
-리프의 키는 실제 데이터라서 빠지면 안 돼요. 그래서 오른쪽 리프의 첫 키를 부모에 복사해 이정표로 써요.
-
-```
-MAX_KEYS = 3일 때 10을 삽입:
-[7 8 9 10] → [7 8] | [9 10],  9를 부모로 복사 (리프에도 남음)
-```
-
-### 내부 노드 분할: 가운데 키를 이동
-
-내부 노드의 키는 이정표라서 한 곳에만 있으면 돼요. 가운데 키를 부모로 올리고 양쪽 어디에도 남기지 않아요.
-남기면 그 노드의 키가 하나 늘어 "자식 수 = 키 수 + 1"이 깨져요.
-
-```
-[3 5 7 9] → [3 5] | 7 ↑ | [9]
-             자식 3개      자식 2개
-```
-
-### 가운데 위치
-
-키 개수가 짝수면 가운데가 둘이에요. 위 예시에서 5를 올려도(`[3] | 5 | [7 9]`) 7을 올려도 올바른 B+ 트리예요. 그래서 하나로 정해 일관되게 써요.
-
-- **`mid = len(keys) // 2`로 정해요.** 짝수일 때는 오른쪽 가운데를 올려요.
-- id가 자동 증가라서 삽입은 항상 맨 오른쪽 리프에서 일어나요. 오른쪽 가운데를 올리면 다시 채워지지 않을 왼쪽 노드를 더 채우고 오른쪽 노드를 비워 두니, 공간이 덜 낭비돼요.
-- `MAX_KEYS`를 짝수(예: 64)로 잡으면 넘쳤을 때 키가 홀수 개라서 가운데가 하나로 정해져요.
-
-리프도 같은 `mid`로 나눠요. 왼쪽은 `keys[:mid]`, 오른쪽은 `keys[mid:]`예요.
-
-### 루트 분할
-
-루트가 넘치면 올라온 키 하나와 나뉜 두 노드로 새 루트를 만들어요. 트리 높이는 이때만 1 늘어나요.
-트리가 위로 자라기 때문에 모든 리프가 항상 같은 깊이에 있어요.
-
-```
-MAX_KEYS = 3에서 id 1~10을 차례로 넣은 결과:
-                    [7]
-                 /       \
-            [3 | 5]       [9]
-           /   |   \      /   \
-       [1 2] [3 4] [5 6] [7 8] [9 10]
-```
-
-## 다루지 않는 것
-
-- **삭제:** 과제에 DELETE가 없어서 노드 병합과 재분배는 구현하지 않아요.
-- **리프 연결(`next`)과 범위 검색:** Phase 2는 `WHERE id = 값`만 인덱스를 써요. 범위 조건은 Phase 1처럼 선형 탐색해요.
-- **디스크 저장:** 트리는 메모리에만 있어요. 재시작 시 복구는 요구사항 `EXE-05`를 따라요.
+| 대상 | 정한 내용 |
+| --- | --- |
+| 가운데 키 | 키 개수가 짝수라 가운데가 둘이면 오른쪽 가운데 키를 써요 |
+| 자식 고르기 | 검색할 때 `bisect_right`를 써요 |
+| `MAX_KEYS` | 생성자 인자로 받아요. 기본값은 `64`이고, 테스트에서는 분할이 자주 일어나도록 `3`~`4`처럼 작게 써요 |
