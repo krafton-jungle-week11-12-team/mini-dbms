@@ -263,11 +263,12 @@ class Executor:
         InsertStmt → run_insert(ast)
         SelectStmt → run_select(ast)
 
-    run_insert(ast):          # INSERT의 실행 순서
-        1. ast.values를 스키마의 컬럼 순서에 맞춰 레코드로 만든다
+    run_insert(ast):          # INSERT의 실행 순서 (Phase 2에서 수정)
+        1. id를 자동 부여하고, [id] + ast.values로 레코드를 만든다
         2. offset ← storage.append(ast.table, 레코드)
-        3. index.insert(id, offset)                       -- Phase 2
-        4. Result를 반환한다
+        3. index.insert(id, offset)
+        4. next_id를 1 늘린다
+        5. Result를 반환한다
 
     run_select(ast):          # SELECT의 실행 순서
         1. 행 읽기: where가 id 조건이면 인덱스로 오프셋을 찾아 storage.read_at(), 아니면 storage.scan(ast.table)  -- 인덱스는 Phase 2
@@ -277,6 +278,8 @@ class Executor:
 ```
 
 명령어를 추가할 때는 `run()`에 분기를 하나 넣고 `run_update()` 같은 함수를 만들어요.
+
+> **Phase 2에서 수정:** INSERT 값에는 id를 쓰지 않아요. 실행기가 테이블별 `next_id`로 id를 부여하고, `(id, offset)`을 인덱스에 넣어요. 자세한 내용은 [Phase 2 설계](phase2.md#insert)를 봐요.
 
 ### 도우미 함수
 
@@ -323,7 +326,7 @@ _project([1, "kim", 25], None)             → [1, "kim", 25]
 | `affected` | INSERT는 삽입한 행 수, SELECT는 반환한 행 수예요 | `1` |
 
 ```
-INSERT INTO users VALUES (6, 'yoon', 28)
+INSERT INTO users VALUES ('yoon', 28)     -- Phase 2에서 수정: id는 실행기가 부여
 → Result { columns: [], rows: [], affected: 1 }
 
 SELECT name, age FROM users WHERE age >= 20
@@ -386,8 +389,8 @@ class Storage:
 `_encode`는 파일에 쓰기 직전에, `_decode`는 파일에서 한 줄을 읽은 직후에 쓰여요. `scan()`과 `read_at()` 모두 `_decode`를 거쳐요.
 
 ```
-INSERT INTO users VALUES (3, 'park', 28)
-→ 실행기: storage.append("users", [3, "park", 28])
+INSERT INTO users VALUES ('park', 28)     -- Phase 2에서 수정: id는 실행기가 부여
+→ 실행기: id 3을 부여하고 storage.append("users", [3, "park", 28])
    → append 안에서: _encode([3, "park", 28]) → b"3,park,28\n"
    → 그 바이트를 파일 끝에 씀
 
@@ -473,5 +476,5 @@ SELECT * FROM users WHERE id = 3          -- Phase 2
 | --- | --- |
 | 없는 테이블 | `SELECT * FROM nope` |
 | 없는 컬럼 | `SELECT nope FROM users`, `WHERE nope = 1` |
-| 값 개수가 컬럼 수와 다름 | 컬럼이 3개인데 `VALUES (1, 'kim')` |
-| 값 타입이 컬럼 타입과 다름 | 숫자 컬럼에 `'abc'` |
+| 값 개수가 컬럼 수와 다름 | id를 뺀 컬럼이 2개인데 `VALUES ('kim')`. **Phase 2에서 수정:** id는 실행기가 부여하므로 id를 뺀 컬럼 수와 비교해요 |
+| 값 타입이 컬럼 타입과 다름 | 숫자 컬럼에 `'abc'`. 예: `VALUES ('kim', 'abc')` |
