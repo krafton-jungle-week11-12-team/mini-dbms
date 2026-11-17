@@ -64,15 +64,7 @@ pytest
 python scripts/gen_data.py --rows 1000000
 python scripts/bench.py --repeat 5
 ```
-
-- `gen_data.py`는 `data/users.csv`를 새로 써요. 들어 있던 데이터는 지워져요.
-  - `--mode csv`(기본): 저장 계층과 같은 형식으로 CSV에 바로 써요. 100만 건이 몇 초 안에 만들어져요.
-  - `--mode engine`: SQL 처리기로 INSERT해서 id 자동 부여와 인덱스 등록까지 실제 경로를 거쳐요. 느려서 1만 건 정도로 써요.
-  - `--mode sql --out bulk.sql`: `./mini-dbms bulk.sql`로 실행할 SQL 파일을 만들어요.
-  - `name`은 `user<id>`로 만들어서, id 조회와 name 조회가 같은 행을 찾아요.
-- `bench.py`는 엔진을 한 번만 만든 뒤, 같은 행을 `WHERE id = ?`(B+ 트리)와 `WHERE name = ?`(선형 탐색)으로 여러 번 조회해 평균을 내요. 조회는 SQL 문장을 `engine.execute()`에 넘겨서 Phase 1 처리기를 그대로 거치고, 두 결과가 같은지도 확인해요.
-
-결과: 100만 건, 5회 평균, Python 3.10.12 (Windows 노트북 위 Linux VM). 엔진 기동(인덱스 재구축)은 6.51초 걸렸어요.
+- 결과: 100만 건, 5회 평균, Python 3.10.12 (Windows 노트북 위 Linux VM). 엔진 기동(인덱스 재구축)은 6.51초 걸렸어요.
 
 | 찾는 행 | id | id 조회 (ms) | name 조회 (ms) | 배수 |
 | --- | ---: | ---: | ---: | ---: |
