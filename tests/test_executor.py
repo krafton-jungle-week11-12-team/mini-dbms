@@ -177,3 +177,41 @@ def test_select_by_index(tmp_path, schema, write_csv, monkeypatch, prep, ast, ex
 
     for field, value in expected.items():
         assert getattr(result, field) == value, field
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Result에 type, inserted_id, used_index 추가
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "prep, ast, expected",
+    [
+        pytest.param(
+            "",
+            InsertStmt(table="users", values=["kim", 25]),
+            {"type": "insert", "inserted_id": 1, "affected": 1},
+            id="T-EXE-17 INSERT 결과에 type, inserted_id",
+        ),
+        pytest.param(
+            "1,kim,25\n2,lee,30\n3,park,27\n",
+            SelectStmt(table="users", columns=None, where=Condition("id", "=", 2)),
+            {"type": "select", "used_index": True, "affected": 1},
+            id="T-EXE-18 인덱스 조회 시 used_index 참",
+        ),
+        pytest.param(
+            "1,kim,25\n2,lee,30\n3,park,27\n",
+            SelectStmt(table="users", columns=None, where=Condition("age", ">", 20)),
+            {"type": "select", "used_index": False},
+            id="T-EXE-19 선형 탐색 시 used_index 거짓",
+        ),
+    ],
+)
+def test_result_fields(tmp_path, schema, write_csv, prep, ast, expected):
+    write_csv(prep)
+    executor = Executor(Storage(tmp_path, schema), schema)
+
+    result = executor.run(ast)
+
+    for field, value in expected.items():
+        assert getattr(result, field) == value, field

@@ -2,6 +2,7 @@ import re
 
 import pytest
 
+from mini_dbms.errors import TableNotFoundError
 from mini_dbms.parser import parse
 from mini_dbms.tokenizer import tokenize
 from mini_dbms.validator import ValidationError, validate
@@ -26,3 +27,12 @@ from mini_dbms.validator import ValidationError, validate
 def test_validate_error(schema, sql, message):
     with pytest.raises(ValidationError, match=re.escape(message)):
         validate(parse(tokenize(sql)), schema)
+
+
+def test_table_not_found(schema):
+    """T-VAL-08 없는 테이블은 TableNotFoundError"""
+    with pytest.raises(TableNotFoundError, match=re.escape("없는 테이블 'orders'")) as exc_info:
+        validate(parse(tokenize("SELECT * FROM orders")), schema)
+
+    # CLI는 ValidationError(DbError)로 잡으므로 자식 클래스여야 해요.
+    assert isinstance(exc_info.value, ValidationError)
