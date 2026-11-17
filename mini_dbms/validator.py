@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mini_dbms.errors import ValidationError
+from mini_dbms.errors import TableNotFoundError, ValidationError
 from mini_dbms.executor import DEFAULT_INDEX_KEY
 from mini_dbms.nodes import InsertStmt, SelectStmt
 
@@ -18,7 +18,7 @@ def _type_ok(value, col_type: str) -> bool:
 
 def validate(ast, schema, index_keys=None) -> None:
     if ast.table not in schema:
-        raise ValidationError(f"없는 테이블 '{ast.table}'")
+        raise TableNotFoundError(f"없는 테이블 '{ast.table}'")
     columns = schema[ast.table]
     types = dict(columns)
 

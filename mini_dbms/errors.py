@@ -17,6 +17,10 @@ class ValidationError(DbError):
     pass
 
 
+class TableNotFoundError(ValidationError):
+    """없는 테이블. 서버는 404로 구분하고, CLI는 ValidationError(DbError)로 잡아요."""
+
+
 def josa(word: str, with_batchim: str, without_batchim: str) -> str:
     """word 뒤에 붙일 조사를 골라요. 예: josa("FROM", "이", "가") → "이"."""
     return with_batchim if _has_batchim(word) else without_batchim
