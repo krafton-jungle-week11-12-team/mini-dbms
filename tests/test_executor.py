@@ -11,20 +11,6 @@ ALL = ["id", "name", "age"]
     "prep, ast, expected, expected_file",
     [
         pytest.param(
-            "",
-            InsertStmt(table="users", values=[1, "kim", 23]),
-            {"columns": [], "rows": [], "affected": 1},
-            "1,kim,23\n",
-            id="T-EXE-01 INSERT",
-        ),
-        pytest.param(
-            "1,kim,23\n",
-            InsertStmt(table="users", values=[2, "lee", 30]),
-            {},
-            "1,kim,23\n2,lee,30\n",
-            id="T-EXE-02 INSERT 두 번",
-        ),
-        pytest.param(
             "1,kim,23\n",
             SelectStmt(table="users", columns=None, where=None),
             {"columns": ALL, "rows": [[1, "kim", 23]], "affected": 1},
@@ -92,3 +78,4 @@ def test_run(tmp_path, schema, write_csv, prep, ast, expected, expected_file):
         assert getattr(result, field) == value, field
     if expected_file is not None:
         assert csv_path.read_bytes().decode("utf-8") == expected_file
+

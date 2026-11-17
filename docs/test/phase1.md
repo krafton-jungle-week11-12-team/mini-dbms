@@ -85,17 +85,17 @@
 | --- | --- | --- | --- |
 | T-VAL-01 | 없는 테이블 | `SELECT * FROM nope` | `없는 테이블 'nope'` |
 | T-VAL-02 | 없는 컬럼 | `SELECT * FROM users WHERE nope = 1` | `없는 컬럼 'nope'` |
-| T-VAL-03 | 값 개수 다름 | `INSERT INTO users VALUES (1, 'kim')` | `값 개수가 컬럼 수와 다름` |
-| T-VAL-04 | 값 타입 다름 | `INSERT INTO users VALUES ('a', 'kim', 25)` | `컬럼 'id'의 타입과 맞지 않음` |
+
+T-VAL-03(값 개수 다름), T-VAL-04(값 타입 다름)는 Phase 2에서 INSERT 값에 id를 쓰지 않게 바뀌면서 제거했어요.
 
 ## 실행기
 
 ### `test_run`: `executor.run(ast)`
 
+T-EXE-01(INSERT), T-EXE-02(INSERT 두 번)는 Phase 2에서 id를 실행기가 부여하게 바뀌면서 제거했어요. INSERT는 [Phase 2 테스트 케이스](phase2.md#test_auto_id-id-자동-부여와-next_id-복구)에서 확인해요.
+
 | ID | 시나리오 | 준비 (users.csv) | 실행 | 기대 결과 |
 | --- | --- | --- | --- | --- |
-| T-EXE-01 | INSERT | 빈 파일 | `run(InsertStmt { table: "users", values: [1, "kim", 23] })` | `Result { columns: [], rows: [], affected: 1 }`, 파일 내용 `1,kim,23\n` |
-| T-EXE-02 | INSERT 두 번 | `1,kim,23\n` | `run(InsertStmt { table: "users", values: [2, "lee", 30] })` | 파일 내용 `1,kim,23\n2,lee,30\n` |
 | T-EXE-03 | SELECT * | `1,kim,23\n` | `run(SelectStmt { table: "users", columns: 없음, where: 없음 })` | `Result { columns: ["id", "name", "age"], rows: [[1, "kim", 23]], affected: 1 }` |
 | T-EXE-04 | WHERE 일치 | `1,kim,23\n2,lee,30\n` | `run(SelectStmt { table: "users", columns: 없음, where: Condition { "age", =, 23 } })` | `rows: [[1, "kim", 23]], affected: 1` |
 | T-EXE-05 | WHERE 비교 연산자 | `1,kim,23\n2,lee,30\n` | `run(SelectStmt { table: "users", columns: 없음, where: Condition { "age", >=, 25 } })` | `rows: [[2, "lee", 30]], affected: 1` |
