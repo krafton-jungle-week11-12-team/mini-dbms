@@ -6,7 +6,7 @@ Phase 1·2 요구사항은 [phase1.md](phase1.md), [phase2.md](phase2.md)에 있
 처리 흐름: `클라이언트 → HTTP POST /query → API 서버 → engine.execute(sql) → (Phase 1·2 엔진) → HTTP 응답`
 
 - 서버와 엔진을 연결하는 방식은 [ADR 0003. 서버 구조와 스레드 풀](../adr/0003-server-architecture.md)을 따라요.
-- 스레드 풀과 동시 요청 처리 요구사항은 아직 이 문서에 없어요.
+- 스레드 풀과 동시 요청 처리 요구사항은 [phase4.md](phase4.md)에 있어요.
 
 ## 클라이언트
 
