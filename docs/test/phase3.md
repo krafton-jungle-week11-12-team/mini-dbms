@@ -26,7 +26,7 @@
 | T-SRV-08 | 서버 | 없는 경로 | 서버 실행 | `POST /abc` `{"sql": "SELECT * FROM users"}` | 404, `ok: false`, `error.code: "NOT_FOUND"` | 미실행 | `SRV-04` |
 | T-SRV-09 | 서버 | POST가 아닌 메서드 | 서버 실행 | `GET /query` | 405, `ok: false`, `error.code: "METHOD_NOT_ALLOWED"` | 미실행 | `SRV-04` |
 | T-SRV-10 | 서버 | JSON이 아닌 Content-Type | 서버 실행 | `POST /query`, `Content-Type: text/plain`, 바디 `SELECT * FROM users` | 415, `ok: false`, `error.code: "UNSUPPORTED_MEDIA_TYPE"` | 미실행 | `SRV-04` |
-| T-SRV-11 | 서버 | 바디 1MB 초과 | 서버 실행 | `POST /query`, 바디 1,048,577바이트 | 413, `ok: false`, `error.code: "PAYLOAD_TOO_LARGE"` | 미실행 | `SRV-04` |
+| T-SRV-11 | 서버 | 바디 1MB 초과 | 서버 실행 | `POST /query`, `Content-Length: 1048577` 헤더만 보내고 바디는 보내지 않음 | 413, `ok: false`, `error.code: "PAYLOAD_TOO_LARGE"` | 미실행 | `SRV-04`. 서버는 바디를 읽기 전에 `Content-Length`로 거절해요. 바디를 실제로 보내면 서버가 먼저 연결을 닫아 클라이언트 전송이 실패할 수 있어요 |
 | T-SRV-12 | 서버 | JSON 파싱 실패 | 서버 실행 | `POST /query` 바디 `{"sql": ` | 400, `ok: false`, `error.code: "INVALID_JSON"` | 미실행 | `SRV-04` |
 | T-SRV-13 | 서버 | `sql` 필드 없음 | 서버 실행 | `POST /query` `{"query": "SELECT * FROM users"}` | 400, `ok: false`, `error.code: "INVALID_REQUEST"` | 미실행 | `SRV-04` |
 | T-SRV-14 | 서버 | 여러 문장 | 서버 실행 | `POST /query` `{"sql": "SELECT * FROM users; SELECT * FROM users"}` | 400, `ok: false`, `error.code: "MULTIPLE_STATEMENTS"` | 미실행 | `SRV-04` |
