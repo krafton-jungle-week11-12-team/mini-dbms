@@ -58,7 +58,7 @@ pip install pytest
 pytest
 ```
 
-### 대량 데이터와 성능 비교
+### 대량 데이터 탐색 벤치마크
 
 ```
 python scripts/gen_data.py --rows 1000000
