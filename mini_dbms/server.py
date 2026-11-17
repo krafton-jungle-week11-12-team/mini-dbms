@@ -3,7 +3,10 @@
 서버는 HTTP 요청 형식만 검사해요. 문법, 테이블, 값 검사는 엔진이 해요.
 요청 검사 순서와 상태 코드는 docs/design/phase3.md를 따라요.
 
-실행: python -m mini_dbms.server [--host HOST] [--port PORT]
+메인 스레드는 연결을 받아 작업 큐에 넣기만 하고, 워커 스레드가 요청을 처리해요.
+스레드 풀 구조는 docs/design/phase4.md를 따라요.
+
+실행: python -m mini_dbms.server [--host HOST] [--port PORT] [--workers N] [--queue-size M]
 데이터 폴더는 CLI와 같이 MINI_DBMS_DATA 환경 변수(기본 data)를 써요.
 """
 
@@ -13,6 +16,8 @@ import argparse
 import json
 import logging
 import os
+import queue
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlsplit
@@ -33,6 +38,25 @@ QUERY_PATH = "/query"
 MAX_BODY_BYTES = 1024 * 1024  # 1MB
 
 
+def _build_busy_response() -> bytes:
+    body = json.dumps(
+        {"ok": False, "error": {"code": "SERVICE_UNAVAILABLE", "message": "server is busy"}}
+    ).encode("utf-8")
+    head = (
+        "HTTP/1.0 503 Service Unavailable\r\n"
+        "Content-Type: application/json; charset=utf-8\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Retry-After: 1\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+    ).encode("ascii")
+    return head + body
+
+
+# 작업 큐가 가득 찼을 때 메인 스레드가 그대로 보내는 응답이에요.
+BUSY_RESPONSE = _build_busy_response()
+
+
 class RequestError(Exception):
     """요청 검사 실패. 상태 코드와 error.code를 담아요."""
 
@@ -44,16 +68,83 @@ class RequestError(Exception):
 
 
 class QueryServer(HTTPServer):
-    """요청을 하나씩 순서대로 처리하는 서버예요. 워커 풀은 아직 붙이지 않았어요."""
+    """메인 스레드는 연결을 작업 큐에 넣고, 워커 스레드 N개가 꺼내서 처리해요."""
 
-    def __init__(self, server_address, engine: Engine):
+    def __init__(self, server_address, engine: Engine, workers: int = 4, queue_size: int = 16):
+        # queue_size=0은 크기 제한이 없다는 뜻이라 503 거절이 동작하지 않아요.
+        if workers < 1 or queue_size < 1:
+            raise ValueError("workers와 queue_size는 1 이상이어야 해요")
         super().__init__(server_address, QueryHandler)
         self.engine = engine
+        self.jobs = queue.Queue(maxsize=queue_size)  # 작업 큐
+        self.workers = [  # 워커 목록
+            threading.Thread(target=self._worker, name=f"worker-{i}")
+            for i in range(1, workers + 1)
+        ]
+        for t in self.workers:
+            t.start()
+
+    # ------------------------------------------------------------------
+    # 메인 스레드
+    # ------------------------------------------------------------------
+
+    def process_request(self, request, client_address) -> None:
+        """연결을 작업 큐에 넣기만 해요. 가득 찼으면 503으로 거절해요."""
+        try:
+            self.jobs.put_nowait((request, client_address))
+        except queue.Full:
+            self._reject(request)
+
+    def _reject(self, request) -> None:
+        """요청을 끝까지 읽지 않고, 이미 도착한 데이터만 비운 뒤 503을 보내고 닫아요."""
+        try:
+            request.setblocking(False)
+            try:
+                while request.recv(65536):
+                    pass
+            except (BlockingIOError, InterruptedError):
+                pass
+            request.setblocking(True)
+            request.sendall(BUSY_RESPONSE)
+        except OSError:
+            pass
+        finally:
+            self.shutdown_request(request)
+
+    # ------------------------------------------------------------------
+    # 워커 스레드
+    # ------------------------------------------------------------------
+
+    def _worker(self) -> None:
+        while True:
+            job = self.jobs.get()  # 큐가 비어 있으면 여기서 기다려요.
+            if job is None:  # 종료 신호
+                return
+            request, client_address = job
+            try:
+                self.finish_request(request, client_address)
+            except Exception:
+                self.handle_error(request, client_address)
+            finally:
+                self.shutdown_request(request)
+
+    def handle_error(self, request, client_address) -> None:
+        logger.exception("요청 처리 중 오류: client=%s", client_address)
+
+    def server_close(self) -> None:
+        # bind()가 실패하면 부모 __init__이 워커를 만들기 전에 이 메서드를 불러요.
+        workers = getattr(self, "workers", [])
+        for _ in workers:
+            self.jobs.put(None)
+        for t in workers:
+            t.join()
+        super().server_close()
 
 
 class QueryHandler(BaseHTTPRequestHandler):
-    # 바디를 보내지 않는 클라이언트가 서버를 계속 붙잡지 않게 해요.
-    timeout = 10
+    # 바디를 보내지 않는 클라이언트가 워커를 오래 붙잡지 않게 해요.
+    # 전체 시간이 아니라 한 번 읽거나 쓸 때마다 기다리는 최대 시간이에요.
+    timeout = 5
 
     def _handle(self) -> None:
         self._body_read = False
@@ -214,11 +305,18 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="mini-dbms API 서버")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--workers", type=int, default=4, help="워커 스레드 수 (1 이상)")
+    parser.add_argument("--queue-size", type=int, default=16, help="작업 큐 크기 (1 이상)")
     args = parser.parse_args(argv)
+
+    if args.workers < 1 or args.queue_size < 1:
+        parser.error("--workers와 --queue-size는 1 이상이어야 해요")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     engine = Engine(os.environ.get("MINI_DBMS_DATA", "data"))
-    server = QueryServer((args.host, args.port), engine)
+    server = QueryServer(
+        (args.host, args.port), engine, workers=args.workers, queue_size=args.queue_size
+    )
     logger.info("listening on http://%s:%d%s", args.host, args.port, QUERY_PATH)
     try:
         server.serve_forever()
