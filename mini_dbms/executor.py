@@ -24,6 +24,9 @@ class Result:
     columns: List[str] = field(default_factory=list)
     rows: List[list] = field(default_factory=list)
     affected: int = 0
+    type: str = ""  # "insert" / "select"
+    inserted_id: Optional[int] = None  # INSERT로 부여한 id
+    used_index: bool = False  # SELECT가 B+ 트리 인덱스로 읽었는지
 
 
 # 인덱스 컬럼을 따로 주지 않으면 모든 테이블이 id를 인덱스로 써요.
@@ -73,12 +76,13 @@ class Executor:
         offset = self.storage.append(ast.table, record)
         self.indexes[ast.table].insert(new_id, offset)
         self.next_id[ast.table] = new_id + 1
-        return Result(columns=[], rows=[], affected=1)
+        return Result(columns=[], rows=[], affected=1, type="insert", inserted_id=new_id)
 
     def run_select(self, ast: SelectStmt) -> Result:
         names = [name for name, _ in self.schema[ast.table]]
         index = {name: i for i, name in enumerate(names)}
-        if self._is_id_lookup(ast.table, ast.where):  # WHERE id = ?
+        used_index = self._is_id_lookup(ast.table, ast.where)
+        if used_index:  # WHERE id = ?
             offset = self.indexes[ast.table].search(ast.where.value)
             records = [] if offset is None else [self.storage.read_at(ast.table, offset)]
         else:  # 그 외 → 선형 탐색
@@ -89,7 +93,10 @@ class Executor:
             if self._match(row, ast.where, index)
         ]
         columns = list(ast.columns) if ast.columns is not None else names
-        return Result(columns=columns, rows=rows, affected=len(rows))
+        return Result(
+            columns=columns, rows=rows, affected=len(rows),
+            type="select", used_index=used_index,
+        )
 
     def _is_id_lookup(self, table: str, condition: Optional[Condition]) -> bool:
         return (
