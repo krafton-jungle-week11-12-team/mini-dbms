@@ -23,7 +23,10 @@ def start_server(tmp_path, write_csv):
     def _start(prep=""):
         write_csv(prep)
         server = QueryServer(("127.0.0.1", 0), Engine(tmp_path))
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        # poll_interval 기본값(0.5초)이면 shutdown()이 테스트마다 0.5초씩 기다려요.
+        thread = threading.Thread(
+            target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        )
         thread.start()
         servers.append((server, thread))
         return server
