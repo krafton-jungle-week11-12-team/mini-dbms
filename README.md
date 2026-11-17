@@ -1,6 +1,6 @@
 # mini-DBMS
 
-SQL 파일을 읽어 `INSERT`와 `SELECT`를 실행하고, 데이터를 CSV 파일에 저장하는 작은 DBMS예요.
+SQL 파일이나 HTTP 요청으로 `INSERT`와 `SELECT`를 실행하고, 데이터를 CSV 파일에 저장하는 작은 DBMS예요.
 
 ## 사용법
 
@@ -36,6 +36,44 @@ SELECT name, age FROM users WHERE age >= 20;
 
 - 데이터는 현재 폴더의 `data/users.csv`에 저장돼요. 다른 폴더를 쓰려면 `MINI_DBMS_DATA=경로 ./mini-dbms demo.sql`처럼 실행해요.
 - 에러가 난 문장은 메시지를 출력하고 건너뛰어요. 하나라도 실패하면 종료 코드가 1이에요.
+
+### API 서버
+
+```
+python3 -m mini_dbms.server --port 8000
+```
+
+- 데이터 폴더는 CLI와 같이 `MINI_DBMS_DATA`(기본 `data`)를 써요. `--host`의 기본값은 `127.0.0.1`이에요.
+- 요청은 한 번에 하나씩 처리해요. 워커 풀은 아직 없어요.
+
+SQL 한 문장을 `POST /query`의 `sql` 필드에 담아 보내요. 끝의 `;`는 있어도 되고 없어도 돼요.
+
+```
+curl -X POST http://127.0.0.1:8000/query \
+  -H 'Content-Type: application/json' \
+  -d '{"sql": "SELECT * FROM users WHERE id = 1"}'
+```
+
+```json
+{"ok": true, "type": "select", "columns": ["id", "name", "age"], "rows": [[1, "kim", 25]], "row_count": 1, "used_index": true, "elapsed_ms": 0.166}
+```
+
+INSERT는 201로 `{"ok": true, "type": "insert", "inserted_id": 1, "affected_rows": 1, ...}`를 응답해요.
+실패하면 `ok`가 `false`이고, `error.code`로 원인을 알려줘요.
+
+```json
+{"ok": false, "error": {"code": "TABLE_NOT_FOUND", "message": "없는 테이블 'orders'"}}
+```
+
+| 상태 코드 | `error.code` | 원인 |
+| --- | --- | --- |
+| 400 | `SYNTAX_ERROR`, `INVALID_VALUE` | SQL 문법 오류, 값 개수·타입이나 컬럼이 스키마와 안 맞음 |
+| 400 | `INVALID_JSON`, `INVALID_REQUEST`, `EMPTY_SQL`, `MULTIPLE_STATEMENTS` | 요청 바디가 잘못됨 |
+| 404 | `TABLE_NOT_FOUND` / `NOT_FOUND` | 없는 테이블 / `/query`가 아닌 경로 |
+| 405, 411, 413, 415 | `METHOD_NOT_ALLOWED` 등 | POST가 아님, `Content-Length` 없음, 바디 1MB 초과, JSON이 아닌 `Content-Type` |
+| 500 | `INTERNAL_ERROR` | 서버 내부 오류. 상세는 서버 로그에만 남아요 |
+
+전체 규칙은 [Phase 3 설계](docs/design/phase3.md)를 봐요.
 
 ### 지원하는 문법
 
