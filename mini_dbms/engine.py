@@ -16,17 +16,21 @@ SCHEMA = {
     "users": [("id", "INT"), ("name", "TEXT"), ("age", "INT")],
 }
 
+# 테이블별 인덱스 컬럼. 이 컬럼 값은 실행기가 자동 부여해요.
+INDEX_KEYS = {"users": "id"}
+
 
 class Engine:
-    def __init__(self, data_dir, schema=SCHEMA):
+    def __init__(self, data_dir, schema=SCHEMA, index_keys=INDEX_KEYS):
         Path(data_dir).mkdir(parents=True, exist_ok=True)
         self.schema = schema
-        self.executor = Executor(Storage(data_dir, schema), schema)
+        self.index_keys = index_keys
+        self.executor = Executor(Storage(data_dir, schema), schema, index_keys)
 
     def execute(self, stmt: str) -> Optional[Result]:
         """빈 문장이면 None을 반환해요. 에러는 DbError 예외로 알려요."""
         ast = parse(tokenize(stmt))
         if ast is None:
             return None
-        validate(ast, self.schema)
+        validate(ast, self.schema, self.index_keys)
         return self.executor.run(ast)

@@ -9,10 +9,11 @@ Python 3.9 이상이 필요하고, 표준 라이브러리만 써요.
 ### 1. SQL 파일 작성
 
 테이블은 `users(id INT, name TEXT, age INT)` 하나예요. 문장은 `;`로 구분해요.
+id는 INSERT할 때 1부터 자동으로 붙으니, 값에는 `name`, `age`만 써요.
 
 ```sql
-INSERT INTO users VALUES (1, 'kim', 25);
-INSERT INTO users VALUES (2, 'lee', 17);
+INSERT INTO users VALUES ('kim', 25);
+INSERT INTO users VALUES ('lee', 17);
 SELECT name, age FROM users WHERE age >= 20;
 ```
 
@@ -45,9 +46,10 @@ SELECT * | <컬럼>, ... FROM <테이블> [WHERE <컬럼> <연산자> <값>]
 
 - 값: 정수(`25`, `-5`) 또는 작은따옴표 문자열(`'kim'`, `'it''s'`)
 - 연산자: `=` `!=` `<` `>` `<=` `>=`
+- `WHERE id = <값>`은 B+ 트리 인덱스로 한 행만 읽고, 그 외 조건은 모든 행을 훑어요.
 - `AND`/`OR`, `ORDER BY`, INSERT의 컬럼 목록 지정은 지원하지 않아요.
 
-자세한 내용은 [Phase 1 설계](docs/design/phase1.md)를 봐요.
+자세한 내용은 [Phase 1 설계](docs/design/phase1.md)와 [Phase 2 설계](docs/design/phase2.md)를 봐요.
 
 ### 테스트
 
