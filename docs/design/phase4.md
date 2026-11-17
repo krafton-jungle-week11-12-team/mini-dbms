@@ -62,10 +62,18 @@ class QueryServer(HTTPServer):
             t.start()
 ```
 
-| 인자 | 의미 | 기본값 |
-| --- | --- | --- |
-| `workers` | 워커 스레드 수 N. 동시에 처리할 수 있는 요청 수예요 | `4` |
-| `queue_size` | 작업 큐 크기 M. 워커가 모두 바쁠 때 기다릴 수 있는 요청 수예요 | `16` |
+| 인자 | 의미 | 허용 형식 | 기본값 |
+| --- | --- | --- | --- |
+| `workers` | 워커 스레드 수 N. 동시에 처리할 수 있는 요청 수예요 | 1 이상의 정수 (예: `4`) | `4` |
+| `queue_size` | 작업 큐 크기 M. 워커가 모두 바쁠 때 기다릴 수 있는 요청 수예요. 가득 차면 503으로 거절해요 | 1 이상의 정수 (예: `16`). `0`은 `queue.Queue`에서 크기 제한이 없다는 뜻이라 쓰지 않아요 | `16` |
+
+1보다 작은 값이 들어오면 `QueryServer`가 스레드를 만들기 전에 `ValueError`를 내요.
+`queue_size=0`을 그대로 넘기면 큐가 가득 차지 않아 503 거절(`TP-03`)이 동작하지 않고, `workers=0`이면 요청을 꺼낼 워커가 없어 모든 요청이 큐에 쌓이기만 하기 때문이에요.
+
+```python
+if workers < 1 or queue_size < 1:
+    raise ValueError("workers와 queue_size는 1 이상이어야 해요")
+```
 
 인자로 받는 이유는 테스트에서 `workers=1, queue_size=1`처럼 작게 줘서, 큐가 가득 찬 상황을 빠르게 만들기 위해서예요.
 스레드 이름은 로그에서 어느 워커가 처리했는지 구분하는 데 써요.
@@ -256,7 +264,7 @@ def run(self, ast) -> Result:
 
 | 파일 | 바꾸는 것 | 요구사항 |
 | --- | --- | --- |
-| `server.py` | `QueryServer`에 작업 큐, 워커 목록, `process_request()`, `_worker()`, `_reject()`, `server_close()`, `handle_error()` 추가. `BUSY_RESPONSE` 상수 추가. `QueryHandler.timeout`을 5로. `main()`에 `--workers`, `--queue-size` 옵션 추가 | `TP-01` ~ `TP-08` |
+| `server.py` | `QueryServer`에 작업 큐, 워커 목록, `process_request()`, `_worker()`, `_reject()`, `server_close()`, `handle_error()` 추가. `BUSY_RESPONSE` 상수 추가. `QueryHandler.timeout`을 5로. `main()`에 `--workers`, `--queue-size` 옵션 추가(각각 `workers`, `queue_size` 인자로 넘김. 허용 형식은 [작업 큐와 워커 만들기](#작업-큐와-워커-만들기-tp-01) 표와 같아요) | `TP-01` ~ `TP-08` |
 | `executor.py` | `Executor.__init__`에 `locks` 추가. `run()`에서 테이블 락 잡기 | `LK-01` ~ `LK-04` |
 
 `QueryHandler`의 요청 검사와 예외 변환, 엔진의 나머지 코드는 바꾸지 않아요.
