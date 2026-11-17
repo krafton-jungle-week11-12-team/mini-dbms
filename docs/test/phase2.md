@@ -12,6 +12,21 @@
 - B+ 트리 테스트는 `BPlusTree(max_keys=3)`로 분할이 자주 일어나게 해요. 값은 키를 알아보기 쉽게 `insert(k, k * 10)`으로 넣어요.
 - 분할 결과의 기대값은 설계 문서의 [정한 것](../design/phase2.md#정한-것)에 따라, 가운데 키가 둘이면 오른쪽 가운데 키를 쓰는 기준이에요.
 
+## 검증
+
+### `test_validate_error`: INSERT 값 개수와 타입
+
+Phase 2에서는 INSERT 값에 id를 쓰지 않아요. 그래서 값 개수는 id를 뺀 컬럼 수(`name`, `age` 2개)와 비교하고, 값 타입도 id를 뺀 컬럼과 순서대로 맞춰 봐요.
+Phase 1의 같은 함수에 케이스를 더해요.
+
+| ID | 시나리오 | 입력 | 기대 에러 메시지 |
+| --- | --- | --- | --- |
+| T-VAL-05 | 값 개수 부족 | `INSERT INTO users VALUES ('kim')` | `값 개수가 컬럼 수와 다름` |
+| T-VAL-06 | id까지 넣음 | `INSERT INTO users VALUES (1, 'kim', 23)` | `값 개수가 컬럼 수와 다름` |
+| T-VAL-07 | 값 타입 다름 | `INSERT INTO users VALUES ('kim', 'abc')` | `컬럼 'age'의 타입과 맞지 않음` |
+
+T-VAL-06은 Phase 1 방식으로 id를 직접 넣으면 막히는지 확인해요.
+
 ## 실행기
 
 ### `test_auto_id`: id 자동 부여와 `next_id` 복구
