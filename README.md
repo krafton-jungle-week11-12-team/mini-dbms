@@ -5,19 +5,39 @@ SQL 파일이나 HTTP 요청으로 `INSERT`와 `SELECT`를 실행하고, 데이�
 ## 사용법
 
 Python 3.9 이상이 필요하고, 표준 라이브러리만 써요.
+실행 방법은 두 가지예요. 엔진을 직접 켜서 SQL 파일을 실행하거나, API 서버를 띄워 HTTP로 SQL을 보내요.
+두 방법 모두 프로젝트 루트에서 실행하고, 데이터는 같은 폴더(`MINI_DBMS_DATA`, 기본 `data`)의 `users.csv`에 저장돼요.
 
-### 1. SQL 파일 작성
+### 지원하는 SQL
 
-테이블은 `users(id INT, name TEXT, age INT)` 하나예요. 문장은 `;`로 구분해요.
+테이블은 `users(id INT, name TEXT, age INT)` 하나예요.
 id는 INSERT할 때 1부터 자동으로 붙으니, 값에는 `name`, `age`만 써요.
+
+```
+INSERT INTO <테이블> VALUES (<값>, <값>, ...)
+SELECT * | <컬럼>, ... FROM <테이블> [WHERE <컬럼> <연산자> <값>]
+```
+
+- 값: 정수(`25`, `-5`) 또는 작은따옴표 문자열(`'kim'`, `'it''s'`)
+- 연산자: `=` `!=` `<` `>` `<=` `>=`
+- `WHERE id = <값>`은 B+ 트리 인덱스로 한 행만 읽고, 그 외 조건은 모든 행을 훑어요.
+- `AND`/`OR`, `ORDER BY`, INSERT의 컬럼 목록 지정은 지원하지 않아요.
+
+자세한 내용은 [Phase 1 설계](docs/design/phase1.md)와 [Phase 2 설계](docs/design/phase2.md)를 봐요.
+
+## 1. 엔진 직접 실행
+
+HTTP 없이 엔진을 바로 호출해요. SQL 파일 실행(CLI)과 벤치마크가 이 방식이에요.
+
+### SQL 파일 실행
+
+문장은 `;`로 구분해요.
 
 ```sql
 INSERT INTO users VALUES ('kim', 25);
 INSERT INTO users VALUES ('lee', 17);
 SELECT name, age FROM users WHERE age >= 20;
 ```
-
-### 2. 실행
 
 ```
 ./mini-dbms demo.sql
@@ -34,32 +54,79 @@ SELECT name, age FROM users WHERE age >= 20;
 (1행)
 ```
 
-- 데이터는 현재 폴더의 `data/users.csv`에 저장돼요. 다른 폴더를 쓰려면 `MINI_DBMS_DATA=경로 ./mini-dbms demo.sql`처럼 실행해요.
+- 다른 데이터 폴더를 쓰려면 `MINI_DBMS_DATA=경로 ./mini-dbms demo.sql`처럼 실행해요.
 - 에러가 난 문장은 메시지를 출력하고 건너뛰어요. 하나라도 실패하면 종료 코드가 1이에요.
 
-### API 서버
+### 대량 데이터 탐색 벤치마크
+
+서버를 거치지 않고 `engine.execute()`를 직접 불러서, HTTP 처리 시간이 섞이지 않아요.
 
 ```
-python3 -m mini_dbms.server --port 8000
+python3 scripts/gen_data.py --rows 1000000
+python3 scripts/bench.py --repeat 5
 ```
 
-- 데이터 폴더는 CLI와 같이 `MINI_DBMS_DATA`(기본 `data`)를 써요. `--host`의 기본값은 `127.0.0.1`이에요.
+- 두 스크립트는 `MINI_DBMS_DATA`가 아니라 `--data-dir`(기본 `data`)로 폴더를 정해요.
+- `gen_data.py`는 `users.csv`를 **새로 써요.** 서버나 CLI로 넣은 데이터를 지키려면 `--data-dir bench-data`처럼 다른 폴더를 쓰고, `bench.py`에도 같은 `--data-dir`을 줘요.
+- 결과: 100만 건, 5회 평균, Python 3.10.12 (Windows 노트북 위 Linux VM). 엔진 기동(인덱스 재구축)은 6.51초 걸렸어요.
+
+| 찾는 행 | id | id 조회 (ms) | name 조회 (ms) | 배수 |
+| --- | ---: | ---: | ---: | ---: |
+| 처음 | 1 | 9.630 | 4,644.5 | 482배 |
+| 가운데 | 500,000 | 9.598 | 4,714.2 | 491배 |
+| 끝 | 1,000,000 | 7.857 | 4,647.3 | 592배 |
+| 없음 | 1,000,001 | 0.069 | 4,646.4 | 67,311배 |
+
+- id 조회는 찾는 행의 위치와 상관없이 비슷해요. 시간 대부분은 `read_at()`이 파일을 열어 한 줄 읽는 데 써요. 없는 id는 트리에서 바로 끝나서 파일을 열지 않아요.
+- name 조회는 이름이 겹칠 수 있어서, 찾는 행이 맨 앞에 있어도 파일 끝까지 훑어요.
+
+## 2. API 서버 실행
+
+### 서버 켜기
+
+```
+python3 -m mini_dbms.server
+```
+
+잘 떴으면 아래 로그가 나오고, 터미널은 요청을 기다려요. 끌 때는 `Ctrl+C`를 눌러요.
+
+```
+... INFO listening on http://127.0.0.1:8000/query
+```
+
+| 하고 싶은 것 | 명령 |
+| --- | --- |
+| 포트 바꾸기 | `python3 -m mini_dbms.server --port 9000` |
+| 데이터 폴더 바꾸기 | `MINI_DBMS_DATA=/tmp/db python3 -m mini_dbms.server` |
+| 다른 컴퓨터에서 접속 허용 | `python3 -m mini_dbms.server --host 0.0.0.0` |
+
+- 데이터는 서버를 실행한 컴퓨터에 저장돼요. 요청을 보낸 쪽에는 응답만 와요.
+- 서버는 시작할 때 `users.csv`를 한 번 읽어 인덱스를 만들어요. 서버가 켜져 있는 동안 CLI로 넣은 데이터는 서버를 다시 켜야 보여요.
 - 요청은 한 번에 하나씩 처리해요. 워커 풀은 아직 없어요.
+- `Address already in use`가 나오면 `--port`로 다른 포트를 써요.
 
-SQL 한 문장을 `POST /query`의 `sql` 필드에 담아 보내요. 끝의 `;`는 있어도 되고 없어도 돼요.
+### 요청 보내기
+
+다른 터미널에서 SQL 한 문장을 `POST /query`의 `sql` 필드에 담아 보내요. 끝의 `;`는 있어도 되고 없어도 돼요.
 
 ```
+curl -X POST http://127.0.0.1:8000/query \
+  -H 'Content-Type: application/json' \
+  -d '{"sql": "INSERT INTO users VALUES ('"'"'kim'"'"', 25)"}'
+
 curl -X POST http://127.0.0.1:8000/query \
   -H 'Content-Type: application/json' \
   -d '{"sql": "SELECT * FROM users WHERE id = 1"}'
 ```
 
+`'"'"'`는 셸에서 작은따옴표 하나를 넣는 방법이에요.
+
 ```json
+{"ok": true, "type": "insert", "inserted_id": 1, "affected_rows": 1, "elapsed_ms": 0.469}
 {"ok": true, "type": "select", "columns": ["id", "name", "age"], "rows": [[1, "kim", 25]], "row_count": 1, "used_index": true, "elapsed_ms": 0.166}
 ```
 
-INSERT는 201로 `{"ok": true, "type": "insert", "inserted_id": 1, "affected_rows": 1, ...}`를 응답해요.
-실패하면 `ok`가 `false`이고, `error.code`로 원인을 알려줘요.
+SELECT는 200, INSERT는 201로 응답해요. 실패하면 `ok`가 `false`이고, `error.code`로 원인을 알려줘요.
 
 ```json
 {"ok": false, "error": {"code": "TABLE_NOT_FOUND", "message": "없는 테이블 'orders'"}}
@@ -75,44 +142,12 @@ INSERT는 201로 `{"ok": true, "type": "insert", "inserted_id": 1, "affected_row
 
 전체 규칙은 [Phase 3 설계](docs/design/phase3.md)를 봐요.
 
-### 지원하는 문법
-
-```
-INSERT INTO <테이블> VALUES (<값>, <값>, ...)
-SELECT * | <컬럼>, ... FROM <테이블> [WHERE <컬럼> <연산자> <값>]
-```
-
-- 값: 정수(`25`, `-5`) 또는 작은따옴표 문자열(`'kim'`, `'it''s'`)
-- 연산자: `=` `!=` `<` `>` `<=` `>=`
-- `WHERE id = <값>`은 B+ 트리 인덱스로 한 행만 읽고, 그 외 조건은 모든 행을 훑어요.
-- `AND`/`OR`, `ORDER BY`, INSERT의 컬럼 목록 지정은 지원하지 않아요.
-
-자세한 내용은 [Phase 1 설계](docs/design/phase1.md)와 [Phase 2 설계](docs/design/phase2.md)를 봐요.
-
-### 테스트
+## 테스트
 
 ```
 pip install pytest
 pytest
 ```
-
-### 대량 데이터 탐색 벤치마크
-
-```
-python scripts/gen_data.py --rows 1000000
-python scripts/bench.py --repeat 5
-```
-- 결과: 100만 건, 5회 평균, Python 3.10.12 (Windows 노트북 위 Linux VM). 엔진 기동(인덱스 재구축)은 6.51초 걸렸어요.
-
-| 찾는 행 | id | id 조회 (ms) | name 조회 (ms) | 배수 |
-| --- | ---: | ---: | ---: | ---: |
-| 처음 | 1 | 9.630 | 4,644.5 | 482배 |
-| 가운데 | 500,000 | 9.598 | 4,714.2 | 491배 |
-| 끝 | 1,000,000 | 7.857 | 4,647.3 | 592배 |
-| 없음 | 1,000,001 | 0.069 | 4,646.4 | 67,311배 |
-
-- id 조회는 찾는 행의 위치와 상관없이 비슷해요. 시간 대부분은 `read_at()`이 파일을 열어 한 줄 읽는 데 써요. 없는 id는 트리에서 바로 끝나서 파일을 열지 않아요.
-- name 조회는 이름이 겹칠 수 있어서, 찾는 행이 맨 앞에 있어도 파일 끝까지 훑어요.
 
 ## 설계 결정 (ADR)
 
