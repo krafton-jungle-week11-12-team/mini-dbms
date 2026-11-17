@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import operator
+import threading
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -40,6 +41,8 @@ class Executor:
         self.index_keys = index_keys or {}
         self.indexes = {}  # 테이블 → BPlusTree
         self.next_id = {}  # 테이블 → 다음에 줄 id
+        # 테이블마다 락 하나. 같은 테이블의 INSERT와 SELECT가 같은 락을 써요.
+        self.locks = {table: threading.Lock() for table in schema}
         for table in schema:
             self._load(table)
 
@@ -62,10 +65,12 @@ class Executor:
         self.next_id[table] = max_id + 1
 
     def run(self, ast) -> Result:
-        if isinstance(ast, InsertStmt):
-            return self.run_insert(ast)
-        if isinstance(ast, SelectStmt):
-            return self.run_select(ast)
+        # run_insert()와 run_select() 안에서는 다시 잡지 않아요. Lock은 재진입이 안 돼요.
+        if isinstance(ast, (InsertStmt, SelectStmt)):
+            with self.locks[ast.table]:
+                if isinstance(ast, InsertStmt):
+                    return self.run_insert(ast)
+                return self.run_select(ast)
         raise TypeError(f"실행할 수 없는 AST: {ast!r}")
 
     def run_insert(self, ast: InsertStmt) -> Result:
