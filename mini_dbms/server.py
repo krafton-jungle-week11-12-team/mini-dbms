@@ -260,6 +260,7 @@ class QueryHandler(BaseHTTPRequestHandler):
                 "rows": result.rows,
                 "row_count": result.affected,
                 "used_index": result.used_index,
+                "index_column": result.index_column,
                 "elapsed_ms": elapsed_ms,
             })
 

@@ -86,6 +86,8 @@ def test_select_success(start_server):
     assert body["columns"] == ["id", "name", "age"]
     assert body["rows"] == [[3, "park", 27]]
     assert body["row_count"] == 1
+    assert body["used_index"] is True
+    assert body["index_column"] == "id"
 
 
 def test_insert_success(start_server):
