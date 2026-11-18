@@ -10,6 +10,11 @@ Python 3.10 이상이 필요하고, 표준 라이브러리만 써요.
 
 ### 지원하는 SQL
 
+```
+INSERT INTO <테이블> VALUES (<값>, <값>, ...)
+SELECT * | <컬럼>, ... FROM <테이블> [WHERE <컬럼> <연산자> <값>]
+```
+
 테이블은 아래 세 개예요. 스키마를 바꾸는 방법은 [스키마와 인덱스 설정](#스키마와-인덱스-설정)을 봐요.
 
 | 테이블 | 컬럼 |
@@ -20,19 +25,12 @@ Python 3.10 이상이 필요하고, 표준 라이브러리만 써요.
 
 id는 INSERT할 때 1부터 자동으로 붙으니, 값에는 id를 뺀 나머지 컬럼을 스키마 순서대로 써요. 예: `INSERT INTO users VALUES ('kim', 25)`
 
-```
-INSERT INTO <테이블> VALUES (<값>, <값>, ...)
-SELECT * | <컬럼>, ... FROM <테이블> [WHERE <컬럼> <연산자> <값>]
-```
-
 - 값: 정수(`25`, `-5`) 또는 작은따옴표 문자열(`'kim'`, `'it''s'`)
 - 연산자: `=` `!=` `<` `>` `<=` `>=`
 - `WHERE id = <값>`은 B+ 트리 인덱스로 한 행만 읽어요.
 - `WHERE <보조 인덱스 컬럼> = <값>`(`messages.client_id`, `likes.message_id`)은 보조 인덱스로 일치하는 행만 읽어요.
 - 그 외 조건(`!=`, `<` 같은 비교 포함)은 모든 행을 훑어요.
 - `AND`/`OR`, `ORDER BY`, INSERT의 컬럼 목록 지정은 지원하지 않아요.
-
-자세한 내용은 [Phase 1 설계](docs/design/phase1.md)와 [Phase 2 설계](docs/design/phase2.md)를 봐요.
 
 ### 스키마와 인덱스 설정
 
@@ -187,21 +185,12 @@ SELECT는 200, INSERT는 201로 응답해요. 실패하면 `ok`가 `false`이고
 | 500 | `INTERNAL_ERROR` | 서버 내부 오류. 상세는 서버 로그에만 남아요 |
 | 503 | `SERVICE_UNAVAILABLE` | 작업 큐가 가득 참. `Retry-After: 1` 헤더가 붙으니 1초 뒤 다시 보내요 |
 
-전체 규칙은 [Phase 3 설계](docs/design/phase3.md)를, 스레드 풀과 테이블 락은 [Phase 4 설계](docs/design/phase4.md)를 봐요.
-
 ## 테스트
 
 ```
 pip install pytest
 pytest
 ```
-
-## 설계 결정 (ADR)
-
-- [0001. 테이블 저장 형식: CSV](docs/adr/0001-storage-format.md)
-- [0002. 개발 언어: Python](docs/adr/0002-language.md)
-- [0003. 서버 구조와 스레드 풀](docs/adr/0003-server-architecture.md)
-- [0004. 락 전략: 테이블별 락](docs/adr/0004-locking.md)
 
 ## DBMS 체험 실습
 
