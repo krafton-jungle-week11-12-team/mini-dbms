@@ -1,6 +1,6 @@
 # mini-DBMS
 
-SQL 파일이나 HTTP 요청으로 `INSERT`와 `SELECT`를 실행하고, 데이터를 CSV 파일에 저장하는 작은 DBMS예요.
+▎ SQL로 데이터를 넣고 조회하면 CSV 파일에 영구 저장하는 작은 DBMS예요. SQL 파일이나 HTTP 요청으로 INSERT/SELECT를 실행할 수 있어요.
 
 ## 사용법
 
