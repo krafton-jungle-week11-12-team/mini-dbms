@@ -22,7 +22,10 @@ SCHEMA = {
 INDEX_KEYS = {"users": "id", "messages": "id", "likes": "id"}
 
 # 테이블별 보조 인덱스 컬럼. 값이 중복될 수 있고, WHERE <컬럼> = ? 조회에 써요.
-SECONDARY_INDEXES = {"messages": ["client_id"]}
+SECONDARY_INDEXES = {
+    "messages": ["client_id"],
+    "likes": ["message_id"],
+}
 
 
 class Engine:
