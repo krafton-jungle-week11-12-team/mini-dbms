@@ -14,11 +14,13 @@ from mini_dbms.validator import validate
 # Phase 1의 고정 스키마
 SCHEMA = {
     "users": [("id", "INT"), ("name", "TEXT"), ("age", "INT")],
+    "messages": [("id", "INT"), ("author", "TEXT"), ("content", "TEXT"), ("created_at", "INT")],
+    "likes": [("id", "INT"), ("message_id", "INT"), ("created_at", "INT")],
+
 }
 
 # 테이블별 인덱스 컬럼. 이 컬럼 값은 실행기가 자동 부여해요.
-INDEX_KEYS = {"users": "id"}
-
+INDEX_KEYS = {"users": "id", "messages": "id", "likes": "id"}
 
 class Engine:
     def __init__(self, data_dir, schema=SCHEMA, index_keys=INDEX_KEYS):
