@@ -127,7 +127,7 @@ curl -X POST http://127.0.0.1:8000/query \
 
 ```json
 {"ok": true, "type": "insert", "inserted_id": 1, "affected_rows": 1, "elapsed_ms": 0.469}
-{"ok": true, "type": "select", "columns": ["id", "name", "age"], "rows": [[1, "kim", 25]], "row_count": 1, "used_index": true, "elapsed_ms": 0.166}
+{"ok": true, "type": "select", "columns": ["id", "name", "age"], "rows": [[1, "kim", 25]], "row_count": 1, "used_index": true, "index_column": "id", "elapsed_ms": 0.166}
 ```
 
 SELECT는 200, INSERT는 201로 응답해요. 실패하면 `ok`가 `false`이고, `error.code`로 원인을 알려줘요.

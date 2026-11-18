@@ -199,13 +199,13 @@ def test_select_by_index(tmp_path, schema, write_csv, monkeypatch, prep, ast, ex
         pytest.param(
             "1,kim,25\n2,lee,30\n3,park,27\n",
             SelectStmt(table="users", columns=None, where=Condition("id", "=", 2)),
-            {"type": "select", "used_index": True, "affected": 1},
+            {"type": "select", "used_index": True, "index_column": "id", "affected": 1},
             id="T-EXE-18 인덱스 조회 시 used_index 참",
         ),
         pytest.param(
             "1,kim,25\n2,lee,30\n3,park,27\n",
             SelectStmt(table="users", columns=None, where=Condition("age", ">", 20)),
-            {"type": "select", "used_index": False},
+            {"type": "select", "used_index": False, "index_column": None},
             id="T-EXE-19 선형 탐색 시 used_index 거짓",
         ),
     ],
@@ -385,6 +385,7 @@ def test_secondary_returns_all_duplicates_in_order(tmp_path, write_csv):
     result = executor.run(_by_client("aaa"))
 
     assert result.used_index is True
+    assert result.index_column == "client_id"
     assert result.rows == [[1, "minji", "aaa"], [3, "minji", "aaa"], [5, "minji", "aaa"]]
 
 
@@ -436,6 +437,7 @@ def test_secondary_not_used_for_other_ops(tmp_path, write_csv):
     result = executor.run(_by_client("aaa", op="!="))
 
     assert result.used_index is False
+    assert result.index_column is None
     assert [row[0] for row in result.rows] == [2, 4]
 
 
@@ -448,4 +450,5 @@ def test_id_lookup_still_uses_primary(tmp_path, write_csv):
     result = executor.run(SelectStmt(table="messages", columns=None, where=Condition("id", "=", 4)))
 
     assert result.used_index is True
+    assert result.index_column == "id"
     assert result.rows == [[4, "hayun", "ccc"]]

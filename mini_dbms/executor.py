@@ -28,6 +28,7 @@ class Result:
     type: str = ""  # "insert" / "select"
     inserted_id: Optional[int] = None  # INSERT로 부여한 id
     used_index: bool = False  # SELECT가 B+ 트리 인덱스(기본 키 또는 보조)로 읽었는지
+    index_column: Optional[str] = None  # 사용한 인덱스의 컬럼 이름. 선형 탐색이면 None
 
 
 # 인덱스 컬럼을 따로 주지 않으면 모든 테이블이 id를 인덱스로 써요.
@@ -121,12 +122,15 @@ class Executor:
         names = [name for name, _ in self.schema[ast.table]]
         index = {name: i for i, name in enumerate(names)}
         sec_tree = self._secondary_lookup(ast.table, ast.where)
+        index_column = None
         if self._is_id_lookup(ast.table, ast.where):  # WHERE id = ?
             used_index = True
+            index_column = ast.where.column
             offset = self.indexes[ast.table].search(ast.where.value)
             records = [] if offset is None else [self.storage.read_at(ast.table, offset)]
         elif sec_tree is not None:  # WHERE <보조 인덱스 컬럼> = ?
             used_index = True
+            index_column = ast.where.column
             offsets = sec_tree.search(ast.where.value) or []
             records = [self.storage.read_at(ast.table, off) for off in offsets]
         else:  # 그 외 → 선형 탐색
@@ -140,7 +144,7 @@ class Executor:
         columns = list(ast.columns) if ast.columns is not None else names
         return Result(
             columns=columns, rows=rows, affected=len(rows),
-            type="select", used_index=used_index,
+            type="select", used_index=used_index, index_column=index_column,
         )
 
     def _is_id_lookup(self, table: str, condition: Optional[Condition]) -> bool:
