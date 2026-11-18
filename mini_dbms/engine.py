@@ -21,12 +21,21 @@ SCHEMA = {
 # 테이블별 인덱스 컬럼. 이 컬럼 값은 실행기가 자동 부여해요.
 INDEX_KEYS = {"users": "id", "messages": "id", "likes": "id"}
 
+# 테이블별 보조 인덱스 컬럼. 값이 중복될 수 있고, WHERE <컬럼> = ? 조회에 써요.
+SECONDARY_INDEXES = {"messages": ["client_id"]}
+
+
 class Engine:
-    def __init__(self, data_dir, schema=SCHEMA, index_keys=INDEX_KEYS):
+    def __init__(
+        self, data_dir, schema=SCHEMA, index_keys=INDEX_KEYS,
+        secondary_indexes=SECONDARY_INDEXES,
+    ):
         Path(data_dir).mkdir(parents=True, exist_ok=True)
         self.schema = schema
         self.index_keys = index_keys
-        self.executor = Executor(Storage(data_dir, schema), schema, index_keys)
+        self.executor = Executor(
+            Storage(data_dir, schema), schema, index_keys, secondary_indexes,
+        )
 
     def execute(self, stmt: str) -> Optional[Result]:
         """빈 문장이면 None을 반환해요. 에러는 DbError 예외로 알려요."""

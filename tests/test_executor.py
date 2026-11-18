@@ -344,3 +344,108 @@ def test_lock_released_after_exception(tmp_path, schema, write_csv, monkeypatch)
 
     assert not second.is_alive(), "두 번째 INSERT가 락을 기다리며 멈췄어요"
     assert results[0].affected == 1
+
+
+# ---------------------------------------------------------------------------
+# 보조 인덱스: messages.client_id (중복 허용)
+# ---------------------------------------------------------------------------
+
+MSG_SCHEMA = {
+    "messages": [("id", "INT"), ("author", "TEXT"), ("client_id", "TEXT")],
+}
+MSG_SECONDARY = {"messages": ["client_id"]}
+
+
+def _msg_executor(tmp_path):
+    return Executor(
+        Storage(tmp_path, MSG_SCHEMA), MSG_SCHEMA, secondary_indexes=MSG_SECONDARY,
+    )
+
+
+def _insert_msgs(executor, pairs):
+    for author, client_id in pairs:
+        executor.run(InsertStmt(table="messages", values=[author, client_id]))
+
+
+def _by_client(client_id, op="="):
+    return SelectStmt(
+        table="messages", columns=None, where=Condition("client_id", op, client_id),
+    )
+
+
+SAMPLE = [("minji", "aaa"), ("seojun", "bbb"), ("minji", "aaa"), ("hayun", "ccc"), ("minji", "aaa")]
+
+
+def test_secondary_returns_all_duplicates_in_order(tmp_path, write_csv):
+    """T-SEC-01 같은 client_id의 행을 모두, 삽입 순서대로 돌려준다"""
+    write_csv("", table="messages")
+    executor = _msg_executor(tmp_path)
+    _insert_msgs(executor, SAMPLE)
+
+    result = executor.run(_by_client("aaa"))
+
+    assert result.used_index is True
+    assert result.rows == [[1, "minji", "aaa"], [3, "minji", "aaa"], [5, "minji", "aaa"]]
+
+
+def test_secondary_missing_key(tmp_path, write_csv):
+    """T-SEC-02 없는 client_id는 빈 결과"""
+    write_csv("", table="messages")
+    executor = _msg_executor(tmp_path)
+    _insert_msgs(executor, SAMPLE)
+
+    result = executor.run(_by_client("zzz"))
+
+    assert result.used_index is True
+    assert result.rows == []
+
+
+def test_secondary_rebuilt_on_load(tmp_path, write_csv):
+    """T-SEC-03 다시 띄워도(_load) 보조 인덱스 결과가 같다"""
+    write_csv("", table="messages")
+    _insert_msgs(_msg_executor(tmp_path), SAMPLE)
+
+    reloaded = _msg_executor(tmp_path)
+
+    assert reloaded.run(_by_client("aaa")).rows == [
+        [1, "minji", "aaa"], [3, "minji", "aaa"], [5, "minji", "aaa"],
+    ]
+    assert reloaded.run(_by_client("ccc")).rows == [[4, "hayun", "ccc"]]
+
+
+def test_secondary_matches_full_scan(tmp_path, write_csv):
+    """T-SEC-04 보조 인덱스 결과가 선형 탐색 결과와 같다"""
+    write_csv("", table="messages")
+    indexed = _msg_executor(tmp_path)
+    _insert_msgs(indexed, SAMPLE)
+    plain = Executor(Storage(tmp_path, MSG_SCHEMA), MSG_SCHEMA)
+
+    for client_id in ["aaa", "bbb", "ccc", "zzz"]:
+        with_index = indexed.run(_by_client(client_id))
+        without = plain.run(_by_client(client_id))
+        assert with_index.used_index and not without.used_index
+        assert with_index.rows == without.rows
+
+
+def test_secondary_not_used_for_other_ops(tmp_path, write_csv):
+    """T-SEC-05 = 이 아닌 조건은 선형 탐색"""
+    write_csv("", table="messages")
+    executor = _msg_executor(tmp_path)
+    _insert_msgs(executor, SAMPLE)
+
+    result = executor.run(_by_client("aaa", op="!="))
+
+    assert result.used_index is False
+    assert [row[0] for row in result.rows] == [2, 4]
+
+
+def test_id_lookup_still_uses_primary(tmp_path, write_csv):
+    """T-SEC-06 보조 인덱스가 있어도 id 조회는 기본 키 트리를 쓴다"""
+    write_csv("", table="messages")
+    executor = _msg_executor(tmp_path)
+    _insert_msgs(executor, SAMPLE)
+
+    result = executor.run(SelectStmt(table="messages", columns=None, where=Condition("id", "=", 4)))
+
+    assert result.used_index is True
+    assert result.rows == [[4, "hayun", "ccc"]]
