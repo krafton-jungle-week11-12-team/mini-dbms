@@ -15,14 +15,6 @@ INSERT INTO <테이블> VALUES (<값>, <값>, ...)
 SELECT * | <컬럼>, ... FROM <테이블> [WHERE <컬럼> <연산자> <값>]
 ```
 
-테이블은 아래 세 개예요. 스키마를 바꾸는 방법은 [스키마와 인덱스 설정](#스키마와-인덱스-설정)을 봐요.
-
-| 테이블 | 컬럼 |
-|---|---|
-| `users` | `id INT, name TEXT, age INT` |
-| `messages` | `id INT, author TEXT, content TEXT, created_at INT, client_id TEXT` |
-| `likes` | `id INT, message_id INT, created_at INT` |
-
 id는 INSERT할 때 1부터 자동으로 붙으니, 값에는 id를 뺀 나머지 컬럼을 스키마 순서대로 써요. 예: `INSERT INTO users VALUES ('kim', 25)`
 
 - 값: 정수(`25`, `-5`) 또는 작은따옴표 문자열(`'kim'`, `'it''s'`)
